@@ -543,45 +543,119 @@ class XiAutoTags_Plugin implements Typecho_Plugin_Interface
     
             // 调试连接测试
             debugBtn.addEventListener('click', function() {
-                logToConsole('开始API连接测试...', 'debug');
+                logToConsole('开始API功能测试...', 'debug');
                 
-                // 测试所有API提供者的连接
-                AI_PROVIDERS.forEach(provider => {
-                    logToConsole(`测试 ${provider.name} 连接...`, 'debug');
-                    
-                    let testUrl = '';
-                    if (provider.name === 'OpenRouter') {
-                        testUrl = 'https://openrouter.ai/api/v1/auth/key';
-                    } else if (provider.isAdvanced && provider.config.request.endpoint) {
-                        testUrl = provider.config.request.endpoint;
-                    } else if (!provider.isAdvanced) {
-                        testUrl = provider.config?.endpoint || '';
-                    }
-                    
-                    if (!testUrl) {
-                        logToConsole(`${provider.name} 无可用测试端点`, 'warning');
-                        return;
-                    }
-                    
-                    fetch(testUrl, {
-                        method: 'HEAD',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(provider.name === 'OpenRouter' ? {'Authorization': 'Bearer ' + provider.config?.apiKey} : {})
+                // 禁用测试按钮避免重复点击
+                debugBtn.disabled = true;
+                const originalText = debugBtn.textContent;
+                debugBtn.textContent = '测试中...';
+                
+                // 记录测试开始时间
+                const testStartTime = Date.now();
+                
+                // 设置全局超时（15秒）
+                const GLOBAL_TIMEOUT = 15000;
+                const globalTimeout = setTimeout(() => {
+                    logToConsole('警告: 全局测试超时 (15秒)，部分API可能无响应', 'warning');
+                    debugBtn.disabled = false;
+                    debugBtn.textContent = originalText;
+                }, GLOBAL_TIMEOUT);
+                
+                // 测试所有API提供者的功能
+                const testPromises = AI_PROVIDERS.map(provider => {
+                    return new Promise((resolve) => {
+                        const providerTestStart = Date.now();
+                        const logPrefix = `[${provider.name}]`;
+                        let timedOut = false;
+                        
+                        // 设置单个API超时（10秒）
+                        const providerTimeout = setTimeout(() => {
+                            timedOut = true;
+                            logToConsole(`${logPrefix} 测试超时 (10秒)`, 'error');
+                            resolve(false);
+                        }, 10000);
+                        
+                        logToConsole(`${logPrefix} 开始功能测试`, 'debug');
+                        
+                        // 构建极简测试请求 - 最小化token消耗
+                        const testPrompt = "连接测试: 请回复OK";
+                        
+                        // 清除超时并处理结果
+                        const clearAndResolve = (success) => {
+                            if (!timedOut) {
+                                clearTimeout(providerTimeout);
+                                resolve(success);
+                            }
+                        };
+                        
+                        try {
+                            if (provider.isAdvanced) {
+                                // 高级API测试 - 使用最小化请求
+                                provider.call(testPrompt, "测试标题", "测试内容", [])
+                                    .then(responseText => {
+                                        const duration = Date.now() - providerTestStart;
+                                        
+                                        // 检查响应是否包含'OK'（不区分大小写）
+                                        if (responseText && responseText.toUpperCase().includes('OK')) {
+                                            logToConsole(`${logPrefix} 测试成功 (${duration}ms): ${responseText}`, 'success');
+                                            clearAndResolve(true);
+                                        } else {
+                                            logToConsole(`${logPrefix} 测试失败: 响应内容无效 - ${responseText}`, 'error');
+                                            clearAndResolve(false);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        const duration = Date.now() - providerTestStart;
+                                        logToConsole(`${logPrefix} 测试失败 (${duration}ms): ${error.message}`, 'error');
+                                        clearAndResolve(false);
+                                    });
+                            } else {
+                                // 标准API测试 - 使用最小化请求
+                                provider.call(testPrompt)
+                                    .then(responseText => {
+                                        const duration = Date.now() - providerTestStart;
+                                        
+                                        // 检查响应是否包含'OK'（不区分大小写）
+                                        if (responseText && responseText.toUpperCase().includes('OK')) {
+                                            logToConsole(`${logPrefix} 测试成功 (${duration}ms): ${responseText}`, 'success');
+                                            clearAndResolve(true);
+                                        } else {
+                                            logToConsole(`${logPrefix} 测试失败: 响应内容无效 - ${responseText}`, 'error');
+                                            clearAndResolve(false);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        const duration = Date.now() - providerTestStart;
+                                        logToConsole(`${logPrefix} 测试失败 (${duration}ms): ${error.message}`, 'error');
+                                        clearAndResolve(false);
+                                    });
+                            }
+                        } catch (error) {
+                            logToConsole(`${logPrefix} 测试初始化失败: ${error.message}`, 'error');
+                            clearAndResolve(false);
                         }
-                    })
-                    .then(response => {
-                        if (response.ok || response.status === 401) {
-                            logToConsole(`${provider.name} 服务器可达`, 'success');
-                        } else {
-                            logToConsole(`${provider.name} 响应异常: ${response.status}`, 'warning');
-                        }
-                    })
-                    .catch(error => {
-                        logToConsole(`${provider.name} 连接失败: ${error.message}`, 'error');
                     });
                 });
+                
+                // 所有测试完成后恢复按钮状态
+                Promise.all(testPromises)
+                    .then(results => {
+                        clearTimeout(globalTimeout);
+                        const totalDuration = Date.now() - testStartTime;
+                        const successCount = results.filter(Boolean).length;
+                        
+                        logToConsole(`测试完成! 成功: ${successCount}/${AI_PROVIDERS.length} (${totalDuration}ms)`, 
+                                     successCount === AI_PROVIDERS.length ? 'success' : 'info');
+                    })
+                    .catch(error => {
+                        logToConsole(`测试错误: ${error.message}`, 'error');
+                    })
+                    .finally(() => {
+                        debugBtn.disabled = false;
+                        debugBtn.textContent = originalText;
+                    });
             });
+
     
             // 通用AI调用函数
             async function callAI(prompt, title, content, existingTags, maxRetries = 2) {
