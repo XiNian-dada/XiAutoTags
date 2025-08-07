@@ -126,7 +126,7 @@ XiAutoTags 是一款专为Typecho设计的智能标签生成插件，由XiNian-d
 
 XiAutoTags © 2025 XiNian-dada  
 作者：XiNian-dada  
-官方网站：[www.hairuosky.cn](https://www.hairuosky.cn)
+官方网站：[leeinx.com](https://leeinx.com)
 
 本插件基于MIT许可证发布，欢迎在保留版权信息的前提下自由使用和修改。
 

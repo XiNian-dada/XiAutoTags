@@ -7,7 +7,7 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
  * @package XiAutoTags
  * @author XiNian-dada
  * @version 1.0.0
- * @link https://www.hairuosky.cn/
+ * @link https://leeinx.com/
  */
 class XiAutoTags_Plugin implements Typecho_Plugin_Interface
 {
@@ -189,7 +189,7 @@ class XiAutoTags_Plugin implements Typecho_Plugin_Interface
                     headers: {
                         'Authorization': `Bearer ${config.apiKey}`,
                         'Content-Type': 'application/json',
-                        'HTTP-Referer': 'https://www.hairuosky.cn',
+                        'HTTP-Referer': 'https://leeinx.com',
                         'X-Title': 'XiAutoTags by XiNian-dada'
                     },
                     body: JSON.stringify({
