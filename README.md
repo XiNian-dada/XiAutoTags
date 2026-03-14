@@ -1,7 +1,7 @@
 # XiAutoTags（Typecho 1.3.0 轻量重构版）
 
 XiAutoTags 是一个给 Typecho 后台写作页用的 AI 标签插件。
-本仓库当前版本为 **v2.0.0 重构版**，目标是：
+本仓库当前版本为 **v2.1.0 重构版**，目标是：
 
 - 保留核心能力（AI 生成标签）
 - 删除旧版复杂且不稳定的逻辑
@@ -10,6 +10,7 @@ XiAutoTags 是一个给 Typecho 后台写作页用的 AI 标签插件。
 ## 功能特性
 
 - 在文章编辑页一键触发 AI 生成标签
+- 同时支持 `Chat Completions` 和 `Responses` 两种接口格式
 - 生成结果以“可点击标签按钮”展示，不强制自动写入
 - 三种颜色状态一眼可见：
   - 黄色：标签库里已有
@@ -22,7 +23,8 @@ XiAutoTags 是一个给 Typecho 后台写作页用的 AI 标签插件。
 
 - Typecho `1.3.0`
 - 需要服务器启用 `cURL`
-- 支持 OpenAI 兼容 Chat Completions 接口（如 OpenRouter）
+- 支持 OpenAI 兼容 `Chat Completions` 接口
+- 支持 OpenAI 兼容 `Responses` 接口
 
 ## 目录结构
 
@@ -38,9 +40,10 @@ XiAutoTags 是一个给 Typecho 后台写作页用的 AI 标签插件。
 
 ## 配置项说明（精简）
 
-- `API 端点`：如 `https://openrouter.ai/api/v1/chat/completions`
+- `API 端点`：如 `https://openrouter.ai/api/v1/chat/completions` 或 `https://api.openai.com/v1/responses`
 - `API Key`：你的服务密钥
 - `模型名称`：如 `deepseek/deepseek-chat`
+- `接口类型`：自动识别 / Chat Completions / Responses
 - `最多标签数`：一次最多返回多少个标签（建议 3-8）
 - `最大内容长度`：发送给 AI 的正文截取长度
 - `请求超时（秒）`
@@ -62,6 +65,7 @@ v2 重构后：
 
 - 保留管理员权限校验
 - 使用 Typecho Action 标准路由
+- 支持 `Responses API`
 - 统一为简洁可读的提示词和返回解析
 - 去除多余依赖与复杂流程，优先保证可用性
 

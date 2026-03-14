@@ -29,6 +29,7 @@ class XiAutoTags_Action extends Typecho_Widget implements Widget_Interface_Do
             $apiEndpoint = trim((string) $pluginOptions->api_endpoint);
             $apiKey = trim((string) $pluginOptions->api_key);
             $model = trim((string) $pluginOptions->model);
+            $apiInterface = trim((string) $pluginOptions->api_interface);
 
             if ($apiEndpoint === '' || $apiKey === '' || $model === '') {
                 $this->error('请先在插件设置中填写 API 端点、API Key 和模型', 400);
@@ -47,7 +48,8 @@ class XiAutoTags_Action extends Typecho_Widget implements Widget_Interface_Do
                 $maxContentLength,
                 array_slice($libraryTags, 0, 20)
             );
-            $raw = $this->callLlmApi($apiEndpoint, $apiKey, $model, $prompt, $timeout);
+            $apiMode = $this->resolveApiMode($apiEndpoint, $apiInterface);
+            $raw = $this->callLlmApi($apiEndpoint, $apiKey, $model, $prompt, $timeout, $apiMode);
             $tags = $this->parseTags($raw, $maxTags);
 
             if (empty($tags)) {
@@ -59,6 +61,7 @@ class XiAutoTags_Action extends Typecho_Widget implements Widget_Interface_Do
                 'success' => true,
                 'tags' => $tags,
                 'raw' => $raw,
+                'api_mode' => $apiMode,
                 'library_tags' => $libraryTags
             ), JSON_UNESCAPED_UNICODE);
         } catch (Exception $e) {
@@ -110,27 +113,27 @@ class XiAutoTags_Action extends Typecho_Widget implements Widget_Interface_Do
         return $tags;
     }
 
-    private function callLlmApi($endpoint, $apiKey, $model, $prompt, $timeout)
+    private function resolveApiMode($endpoint, $apiInterface)
+    {
+        $apiInterface = strtolower(trim((string) $apiInterface));
+        if (in_array($apiInterface, array('chat_completions', 'responses'), true)) {
+            return $apiInterface;
+        }
+
+        if (preg_match('#/responses(?:[/?]|$)#i', $endpoint)) {
+            return 'responses';
+        }
+
+        return 'chat_completions';
+    }
+
+    private function callLlmApi($endpoint, $apiKey, $model, $prompt, $timeout, $apiMode)
     {
         if (!function_exists('curl_init')) {
             throw new Exception('服务器未启用 cURL');
         }
 
-        $payload = json_encode(array(
-            'model' => $model,
-            'messages' => array(
-                array(
-                    'role' => 'system',
-                    'content' => '你是文章标签助手，只返回逗号分隔的标签列表。'
-                ),
-                array(
-                    'role' => 'user',
-                    'content' => $prompt
-                )
-            ),
-            'temperature' => 0.2,
-            'max_tokens' => 120
-        ), JSON_UNESCAPED_UNICODE);
+        $payload = $this->buildApiPayload($apiMode, $model, $prompt);
 
         $headers = array(
             'Content-Type: application/json',
@@ -178,11 +181,126 @@ class XiAutoTags_Action extends Typecho_Widget implements Widget_Interface_Do
             throw new Exception('AI 接口返回错误');
         }
 
-        if (!empty($json['choices'][0]['message']['content'])) {
-            return trim($json['choices'][0]['message']['content']);
+        $content = $this->extractApiResponseText($json, $apiMode);
+        if ($content !== '') {
+            return $content;
         }
 
         throw new Exception('AI 没有返回可用内容');
+    }
+
+    private function buildApiPayload($apiMode, $model, $prompt)
+    {
+        if ($apiMode === 'responses') {
+            return json_encode(array(
+                'model' => $model,
+                'instructions' => '你是文章标签助手，只返回逗号分隔的标签列表。',
+                'input' => $prompt,
+                'temperature' => 0.2,
+                'max_output_tokens' => 120,
+                'text' => array(
+                    'format' => array(
+                        'type' => 'text'
+                    )
+                )
+            ), JSON_UNESCAPED_UNICODE);
+        }
+
+        return json_encode(array(
+            'model' => $model,
+            'messages' => array(
+                array(
+                    'role' => 'system',
+                    'content' => '你是文章标签助手，只返回逗号分隔的标签列表。'
+                ),
+                array(
+                    'role' => 'user',
+                    'content' => $prompt
+                )
+            ),
+            'temperature' => 0.2,
+            'max_tokens' => 120
+        ), JSON_UNESCAPED_UNICODE);
+    }
+
+    private function extractApiResponseText($json, $apiMode)
+    {
+        $content = '';
+        if ($apiMode === 'responses') {
+            $content = $this->extractResponsesText($json);
+            if ($content === '') {
+                $content = $this->extractChatCompletionsText($json);
+            }
+        } else {
+            $content = $this->extractChatCompletionsText($json);
+            if ($content === '') {
+                $content = $this->extractResponsesText($json);
+            }
+        }
+
+        return trim($content);
+    }
+
+    private function extractChatCompletionsText($json)
+    {
+        if (empty($json['choices'][0]['message']['content'])) {
+            return '';
+        }
+
+        if (is_string($json['choices'][0]['message']['content'])) {
+            return trim($json['choices'][0]['message']['content']);
+        }
+
+        if (!is_array($json['choices'][0]['message']['content'])) {
+            return '';
+        }
+
+        $chunks = array();
+        foreach ($json['choices'][0]['message']['content'] as $item) {
+            if (is_array($item) && !empty($item['text']) && is_string($item['text'])) {
+                $chunks[] = $item['text'];
+            }
+        }
+
+        return trim(implode("\n", $chunks));
+    }
+
+    private function extractResponsesText($json)
+    {
+        if (!empty($json['output_text']) && is_string($json['output_text'])) {
+            return trim($json['output_text']);
+        }
+
+        if (empty($json['output']) || !is_array($json['output'])) {
+            return '';
+        }
+
+        $chunks = array();
+        foreach ($json['output'] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            if (!empty($item['text']) && is_string($item['text'])) {
+                $chunks[] = $item['text'];
+            }
+
+            if (empty($item['content']) || !is_array($item['content'])) {
+                continue;
+            }
+
+            foreach ($item['content'] as $contentItem) {
+                if (!is_array($contentItem)) {
+                    continue;
+                }
+
+                if (!empty($contentItem['text']) && is_string($contentItem['text'])) {
+                    $chunks[] = $contentItem['text'];
+                }
+            }
+        }
+
+        return trim(implode("\n", $chunks));
     }
 
     private function parseTags($text, $maxTags)

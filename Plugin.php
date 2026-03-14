@@ -9,7 +9,7 @@ require_once dirname(__FILE__) . '/Action.php';
  *
  * @package XiAutoTags
  * @author XiNian-dada
- * @version 2.0.0
+ * @version 2.1.0
  * @link https://leeinx.com/
  */
 class XiAutoTags_Plugin implements Typecho_Plugin_Interface
@@ -34,7 +34,7 @@ class XiAutoTags_Plugin implements Typecho_Plugin_Interface
             null,
             'https://openrouter.ai/api/v1/chat/completions',
             _t('API 端点'),
-            _t('OpenAI 兼容接口，例如 OpenRouter 或你自己的网关地址')
+            _t('填写完整接口地址，例如 /v1/chat/completions 或 /v1/responses')
         );
         $form->addInput($apiEndpoint);
 
@@ -55,6 +55,19 @@ class XiAutoTags_Plugin implements Typecho_Plugin_Interface
             _t('例如 deepseek/deepseek-chat 或 gpt-4o-mini')
         );
         $form->addInput($model);
+
+        $apiInterface = new Typecho_Widget_Helper_Form_Element_Radio(
+            'api_interface',
+            array(
+                'auto' => _t('自动识别'),
+                'chat_completions' => _t('Chat Completions'),
+                'responses' => _t('Responses')
+            ),
+            'auto',
+            _t('接口类型'),
+            _t('默认自动识别：端点包含 /responses 时走 Responses 接口，否则走 Chat Completions')
+        );
+        $form->addInput($apiInterface);
 
         $maxTags = new Typecho_Widget_Helper_Form_Element_Text(
             'max_tags',
